@@ -1,0 +1,34 @@
+<launch>
+
+  <!-- ============================= -->
+  <!--  参数配置 -->
+  <!-- ============================= -->
+  <arg name="use_camera" default="true"/>
+
+  <!-- ============================= -->
+  <!-- 1. 启动 Realsense 相机         -->
+  <!-- ============================= -->
+  <group if="$(arg use_camera)">
+    <include file="$(find realsense2_camera)/launch/rs_camera.launch"/>
+  </group>
+
+  <!-- ============================= -->
+  <!-- 2. 启动 Livox MID360 驱动（两个都启动） -->
+  <!-- ============================= -->
+
+  <!-- 普通 MID360 驱动 -->
+  <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360.launch"/>
+
+  <!-- 同步版 MID360 驱动 -->
+  <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360_sync.launch"/>
+
+
+  <!-- ============================= -->
+  <!-- 3. 启动 FAST-LIVO2 MID360 模式 -->
+  <!-- ============================= -->
+  <include file="$(find fast_livo)/launch/mapping_mid360.launch"/>
+
+
+
+
+</launch>

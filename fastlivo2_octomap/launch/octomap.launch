@@ -1,0 +1,24 @@
+<launch>
+
+  <!-- 订阅 FAST-LIVO2 的 TF -->
+  <node pkg="tf" type="static_transform_publisher" name="tf_pub"
+        args="0 0 0 0 0 0 map world 100" />
+
+  <!-- OctoMap 服务器 -->
+  <node pkg="octomap_server" type="octomap_server" name="octomap_server">
+
+    <!-- 输入点云（来自 FAST-LIVO2） -->
+    <param name="pointcloud_topic" value="/cloud_registered"/>
+
+    <!-- Octomap 分辨率 -->
+    <param name="resolution" value="0.1"/>
+
+    <!-- 机器人激光坐标系名称 -->
+    <param name="frame_id" value="map"/>
+
+    <!-- 最大/最小高度过滤 -->
+    <param name="max_range" value="50"/>
+
+  </node>
+
+</launch>
