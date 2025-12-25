@@ -29,6 +29,4 @@
   <include file="$(find fast_livo)/launch/mapping_mid360.launch"/>
 
 
-
-
 </launch>

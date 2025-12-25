@@ -1,0 +1,23 @@
+<launch>
+
+  <node pkg="octomap_server"
+        type="octomap_server_node"
+        name="octomap_server"
+        output="screen">
+
+    <remap from="cloud_in" to="/cloud_registered"/>
+
+    <!-- 坐标系（你现在用的） -->
+    <param name="frame_id" value="camera_init"/>
+
+    <!-- OctoMap 分辨率 -->
+    <param name="resolution" value="0.05"/>
+
+    <param name="publish_2d_map" value="true"/>
+
+    <param name="min_z" value="0.60"/>
+    <param name="max_z" value="1.7"/>
+
+  </node>
+
+</launch>

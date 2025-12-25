@@ -1,0 +1,13 @@
+<launch>
+  <!-- SLAM / FAST-LIVO2（你自己的 slam.launch 如果已有就 include） -->
+  <!-- <include file="$(find fastlivo2_bringup)/launch/fastlivo2_full.launch"/> -->
+
+  <!-- OctoMap + 2D map -->
+  <include file="$(find robot_bringup)/launch/octomap.launch"/>
+
+  <!-- TF glue -->
+  <include file="$(find robot_bringup)/launch/tf.launch"/>
+
+  <!-- Navigation -->
+  <include file="$(find robot_bringup)/launch/navigation.launch"/>
+</launch>
