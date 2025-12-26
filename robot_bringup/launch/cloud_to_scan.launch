@@ -1,0 +1,25 @@
+<launch>
+
+  <node pkg="pointcloud_to_laserscan"
+        type="pointcloud_to_laserscan_node"
+        name="cloud_to_scan">
+
+    <remap from="cloud_in" to="/cloud_registered"/>
+    <remap from="scan"     to="/scan"/>
+
+    <!-- 坐标系：直接发布在底盘坐标系，避免 AMCL 再去找 base_link->camera_init 的动态 TF -->
+    <param name="target_frame" value="base_link"/>
+
+    <!-- 2D 投影参数 -->
+    <param name="min_height" value="-2.0"/>
+    <param name="max_height" value="2.0"/>
+
+    <param name="angle_min" value="-3.14159"/>
+    <param name="angle_max" value="3.14159"/>
+
+    <param name="range_min" value="0.1"/>
+    <param name="range_max" value="12.0"/>
+
+  </node>
+
+</launch>

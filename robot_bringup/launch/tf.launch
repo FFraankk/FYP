@@ -1,13 +1,7 @@
 <launch>
-  <!-- camera_init -> map (rename/alias) -->
+  <!-- 把 FAST-LIVO2D 的位姿当成 base_link -->
   <node pkg="tf"
         type="static_transform_publisher"
-        name="tf_camera_init_to_map"
-        args="0 0 0 0 0 0 camera_init map 100" />
-
-  <!-- aft_mapped -> base_link (rename/alias) -->
-  <node pkg="tf"
-        type="static_transform_publisher"
-        name="tf_aft_mapped_to_base_link"
+        name="tf_base_link_from_aft_mapped"
         args="0 0 0 0 0 0 aft_mapped base_link 100" />
 </launch>

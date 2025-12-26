@@ -1,0 +1,25 @@
+<launch>
+  <node pkg="amcl" type="amcl" name="amcl" output="screen">
+
+    <!-- TF 语义（已确认正确） -->
+    <param name="global_frame_id" value="map"/>
+    <param name="odom_frame_id"   value="camera_init"/>
+    <param name="base_frame_id"   value="base_link"/>
+
+    <!-- 激光 -->
+    <param name="scan_topic" value="/scan"/>
+    <param name="use_map_topic" value="true"/>
+
+    <!-- ★ 关键：解决 FAST-LIVO2D 时间延迟 -->
+    <param name="transform_tolerance" value="0.5"/>
+
+    <!-- 粒子数量（先稳） -->
+    <param name="min_particles" value="500"/>
+    <param name="max_particles" value="2000"/>
+
+    <!-- 激光模型（对点云投影 scan 更稳） -->
+    <param name="laser_model_type" value="likelihood_field"/>
+    <param name="laser_max_range" value="12.0"/>
+
+  </node>
+</launch>
