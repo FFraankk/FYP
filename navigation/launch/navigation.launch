@@ -1,0 +1,27 @@
+<launch>
+  <!-- <arg name="map_file" default="$(find navigation)/maps/floor_raw.yaml"/> 
+  <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" /> -->
+
+  <!-- <node pkg="tf" type="static_transform_publisher" name="map_to_camera_init" args="0 0 0 0 0 0 map camera_init 100" /> -->
+
+  <!-- <node pkg="tf" type="static_transform_publisher" name="body_to_base_link" args="0 0 0 0 0 0 body base_link 100" /> -->
+
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <!-- global costmap -->
+    <rosparam file="$(find navigation)/config/common_costmap_params.yaml" command="load" ns="global_costmap" /> 
+    <rosparam file="$(find navigation)/config/global_costmap_params.yaml" command="load" ns="global_costmap" />     
+
+    <!-- local costmap -->
+    <rosparam file="$(find navigation)/config/local_costmap_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find navigation)/config/common_costmap_params.yaml" command="load" ns="local_costmap" />
+
+    <!-- global planner -->
+    <rosparam file="$(find navigation)/config/global_planner_params.yaml" command="load" />
+
+    <!-- local planner -->
+    <rosparam file="$(find navigation)/config/teb_local_planner_params.yaml" command="load" />
+
+    <!-- move base -->
+    <rosparam file="$(find navigation)/config/move_base_params.yaml" command="load"/>
+  </node>
+</launch>

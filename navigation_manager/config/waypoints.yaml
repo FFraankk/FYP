@@ -1,0 +1,20 @@
+# waypoints.yaml
+# 格式：[x, y, z, qx, qy, qz, qw]
+floor_4:
+  map_name: "floor_4_raw.yaml" # 假设 4 楼地图名为这个
+  stairs_point: [12.5, 4.8, 0.0, 0.0, 0.0, 0.0, 1.0]
+  office_goal: [15.0, 6.0, 0.0, 0.0, 0.0, 0.0, 1.0] # 补全代码中调用的 key
+  
+floor_3:
+  map_name: "floor3_raw.yaml" # 匹配 launch 文件中的默认值
+  stairs_point: [42.466, 11.962, 0.185, 0.0097, -0.0461, -0.2256, 0.9731] # 已经校准过
+  office_goal: [40.0, 10.0, 0.185, 0.0, 0.0, 0.0, 1.0] # 补全代码中调用的 key
+
+settings:
+  floor_threshold: -1.5
+  dist_threshold: 1.2
+
+start_candidates:
+- [42.46, 11.96, 0.18, 0.0, 0.0, -0.22, 0.97] # 楼梯口
+- [10.5, 5.2, 0.18, 0.0, 0.0, 0.0, 1.0]      # 充电桩旁
+- [2.0, -1.5, 0.18, 0.0, 0.0, 1.0, 0.0]      # 走廊尽头
