@@ -9,10 +9,10 @@ TebLocalPlannerROS:
 
   # Trajectory
   teb_autosize: true
-  dt_ref: 0.5
+  dt_ref: 0.3
   dt_hysteresis: 0.1
   min_samples: 3
-  max_samples: 100
+  max_samples: 25
   global_plan_overwrite_orientation: false
   allow_init_with_backwards_motion: false
   global_plan_viapoint_sep: 0.3
@@ -22,7 +22,7 @@ TebLocalPlannerROS:
   exact_arc_length: false
   force_reinit_new_goal_dist: 1.0
   force_reinit_new_goal_angular: 0.78
-  feasibility_check_no_poses: 30
+  feasibility_check_no_poses: 3
   feasibility_check_lookahead_distance: 3
   publish_feedback: false
   min_resolution_collision_check_angular: 3.1415926
@@ -46,9 +46,9 @@ TebLocalPlannerROS:
   transform_tolerance: 0.3
 
   # GoalTolerance
-  xy_goal_tolerance: 0.20
-  yaw_goal_tolerance: 0.20
-  free_goal_vel: false
+  xy_goal_tolerance: 0.60
+  yaw_goal_tolerance: 0.50
+  free_goal_vel: true
   trans_stopped_vel: 0.05
   theta_stopped_vel: 0.05
   complete_global_plan: false
@@ -58,20 +58,22 @@ TebLocalPlannerROS:
   inflation_dist: 0.45
   dynamic_obstacle_inflation_dist: 0.6
   include_dynamic_obstacles: true
-  include_costmap_obstacles: false
+  include_costmap_obstacles: true
   costmap_obstacles_behind_robot_dist: 2.0
   obstacle_poses_affected: 10
   legacy_obstacle_association: false
   obstacle_association_force_inclusion_factor: 3 
   obstacle_association_cutoff_factor: 10
-  costmap_converter_plugin: "costmap_converter::CostmapToPolygonsDBSMCCH"
-  costmap_converter: 
-    CostmapToPolygonsDBSMCCH: 
-      cluster_max_distance: 0.3
-      cluster_max_pts: 30
-      cluster_min_pts: 3
-      convex_hull_min_pt_separation: 0.1
-  costmap_converter_spin_thread: true
+  # costmap_converter_plugin: "costmap_converter::CostmapToPolygonsDBSMCCH"
+  # costmap_converter: 
+  #   CostmapToPolygonsDBSMCCH: 
+  #     cluster_max_distance: 0.3
+  #     cluster_max_pts: 30
+  #     cluster_min_pts: 3
+  #     convex_hull_min_pt_separation: 0.1
+
+  costmap_converter_plugin: ""
+  costmap_converter_spin_thread: false
   obstacle_proximity_ratio_max_vel: 0.7
   obstacle_proximity_lower_bound: 0.2
   obstacle_proximity_upper_bound: 0.6

@@ -6,173 +6,158 @@ import tf
 import os
 import yaml
 import rospkg
+import numpy as np
 from hdl_localization.msg import ScanMatchingStatus
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from std_srvs.srv import Empty
 
-class HdlKillerJetson:
+class HdlGovernorJetson:
     def __init__(self):
-        rospy.init_node('hdl_killer_node', anonymous=False)
+        rospy.init_node('hdl_governor_node', anonymous=False)
 
-        # --- 1. 参数化配置 - 遵循用户习惯: base_frame 为里程计系(camera_init)，odom_frame 为机器人系(aft_mapped) ---
+        # --- 1. 参数配置 ---
         self.map_frame = rospy.get_param('~map_frame', 'map')
-        self.base_frame = rospy.get_param('~base_frame', 'camera_init') # Odom Origin (Parent)
-        self.odom_frame = rospy.get_param('~odom_frame', 'aft_mapped')   # Robot Body (Child)
+        self.base_frame = rospy.get_param('~base_frame', 'camera_init')
+        self.odom_frame = rospy.get_param('~odom_frame', 'aft_mapped') 
         
-        # 收敛阈值
-        self.inlier_thresh = rospy.get_param('~inlier_fraction_thresh', 0.90)
-        self.error_thresh = rospy.get_param('~matching_error_thresh', 0.05)
+        self.inlier_thresh = rospy.get_param('~inlier_fraction_thresh', 0.95)
+        self.error_thresh = rospy.get_param('~matching_error_thresh', 0.04)
         
-        # 节点清理列表
-        self.nodes_to_kill = rospy.get_param('~nodes_to_kill', [
-            '/velodyne_nodelet_manager', 
-            '/hdl_global_localization'
-        ])
-        
-        # 频率控制
-        self.tf_rate = rospy.get_param('~tf_pub_rate', 50.0)
-        self.logic_rate = rospy.get_param('~logic_rate', 5.0)
+        self.tf_rate = rospy.get_param('~tf_pub_rate', 30.0)
+        self.logic_rate = 3.0   
+        self.recalib_duration = rospy.Duration(10.0) 
 
-        # --- 2. 内部状态变量 ---
-        self.alignment_locked = False
-        self.locked_transform = None
+        # --- 2. 状态变量 ---
         self.current_idx = 0
-        self.loop_counter = 0
+        self.wait_count = 0     
+        self.best_inlier_seen = 0.0 
+        self.last_fix_time = rospy.Time(0)
+        self.last_recalib_trigger = rospy.Time.now()
         
-        # --- 3. 路径与配置加载 ---
+        self.best_trans = None
+        self.best_rot = None
+        self.is_localized = False 
+
+        # --- 3. 初始化 ---
+        self.load_waypoints()
+        self.listener = tf.TransformListener()
+        self.br = tf.TransformBroadcaster()
+        self.init_pub = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=1)
+        
+        try:
+            rospy.loginfo("[Governor] 等待 /relocalize 服务...")
+            rospy.wait_for_service('/relocalize', timeout=2.0)
+            self.reloc_srv = rospy.ServiceProxy('/relocalize', Empty)
+        except:
+            self.reloc_srv = None
+            rospy.logwarn("[Governor] 未发现重定位服务")
+
+        self.status_sub = rospy.Subscriber('/status', ScanMatchingStatus, self.status_callback, queue_size=10)
+
+        # 定时器
+        rospy.Timer(rospy.Duration(1.0 / self.tf_rate), self.publish_tf_loop)
+        rospy.Timer(rospy.Duration(self.logic_rate), self.main_logic_loop)
+
+        rospy.loginfo("[Governor] 系统就绪：候选点模式 -> 锁定追踪模式")
+
+    def load_waypoints(self):
         try:
             rp = rospkg.RosPack()
             pkg_path = rp.get_path('navigation_manager')
             yaml_path = os.path.join(pkg_path, 'config', 'waypoints.yaml')
-            
-            if not os.path.exists(yaml_path):
-                rospy.logerr("[HDL_KILLER] 致命错误: 配置文件不存在于 %s", yaml_path)
-                self.candidates = []
-            else:
-                with open(yaml_path, 'r') as f:
-                    config = yaml.safe_load(f)
-                    self.candidates = config.get('start_candidates', [])
-                    if not self.candidates:
-                        rospy.logwarn("[HDL_KILLER] YAML中没有找到 start_candidates 列表。")
-        except Exception as e:
-            rospy.logerr("[HDL_KILLER] 配置文件加载异常: %s", str(e))
+            with open(yaml_path, 'r') as f:
+                config = yaml.safe_load(f)
+                self.candidates = config.get('start_candidates', [])
+            rospy.loginfo(f"[Governor] 加载了 {len(self.candidates)} 个点")
+        except:
             self.candidates = []
+            rospy.logerr("[Governor] 无法加载候选点文件")
 
-        # --- 4. ROS 通信接口 ---
-        self.listener = tf.TransformListener()
-        self.br = tf.TransformBroadcaster()
-        
-        self.init_pub = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=1)
-        
-        rospy.loginfo("[HDL_KILLER] 正在等待 /relocalize 服务 (timeout=10s)...")
+    def main_logic_loop(self, event):
+        now = rospy.Time.now()
+
+        if not self.is_localized:
+            if not self.candidates:
+                self.call_relocalize()
+                return
+
+            if self.wait_count < 3:
+                p = self.candidates[self.current_idx]
+                if self.wait_count == 0:
+                    rospy.loginfo(f"--- 尝试候选点 {self.current_idx} ---")
+                    self.publish_initial_pose(p)
+                self.wait_count += 1
+            else:
+                if self.current_idx == len(self.candidates) - 1:
+                    rospy.logwarn("[保底] 全局重定位触发...")
+                    self.call_relocalize()
+                    self.wait_count = -2 
+                else:
+                    self.wait_count = 0
+                self.current_idx = (self.current_idx + 1) % len(self.candidates)
+                self.best_inlier_seen = 0.0
+        else:
+            # 追踪模式：定期校准
+            if (now - self.last_recalib_trigger) > self.recalib_duration:
+                self.trigger_calibration_pose()
+                self.last_recalib_trigger = now
+
+    def trigger_calibration_pose(self):
         try:
-            rospy.wait_for_service('/relocalize', timeout=10.0)
-            self.reloc_srv = rospy.ServiceProxy('/relocalize', Empty)
-            rospy.loginfo("[HDL_KILLER] 服务连接成功。")
-        except rospy.ROSException:
-            self.reloc_srv = None
-            rospy.logerr("[HDL_KILLER] 无法连接到 /relocalize 服务！")
+            # 获取最新 map -> aft_mapped 投喂给 HDL
+            if self.listener.canTransform(self.map_frame, self.odom_frame, rospy.Time(0)):
+                (trans, rot) = self.listener.lookupTransform(self.map_frame, self.odom_frame, rospy.Time(0))
+                self.publish_initial_pose([trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3]])
+                rospy.loginfo("[校准] 已同步当前位姿")
+        except: pass
 
-        self.status_sub = rospy.Subscriber('/status', ScanMatchingStatus, self.status_callback, queue_size=10)
-
-        # --- 5. 任务调度定时器 ---
-        rospy.Timer(rospy.Duration(1.0 / self.tf_rate), self.publish_tf_loop)
-        rospy.Timer(rospy.Duration(self.logic_rate), self.search_logic_loop)
-
-        rospy.loginfo("[HDL_KILLER] 混合重定位系统已就绪。正在等待收敛信号...")
-
-    def search_logic_loop(self, event):
-        if self.alignment_locked:
-            return
-
-        self.loop_counter += 1
-        
-        # --- 策略 A: 坐标投喂 ---
-        if self.candidates:
-            p = self.candidates[self.current_idx]
-            self.publish_initial_pose(p)
-            rospy.loginfo("[HDL_KILLER] [策略A] 投喂候选点 %d/%d", self.current_idx + 1, len(self.candidates))
-            self.current_idx = (self.current_idx + 1) % len(self.candidates)
-
-        # --- 策略 B: 全局重定位服务 (每 3 次循环触发一次，默认 15s) ---
-        if self.loop_counter % 3 == 0:
-            if self.reloc_srv:
-                try:
-                    self.reloc_srv()
-                    rospy.logwarn("[HDL_KILLER] [策略B] 触发全局重定位服务")
-                except Exception as e:
-                    rospy.logerr("[HDL_KILLER] 调用全局服务失败: %s", str(e))
+    def call_relocalize(self):
+        if self.reloc_srv:
+            try: self.reloc_srv()
+            except: pass
 
     def publish_initial_pose(self, p):
         msg = PoseWithCovarianceStamped()
         msg.header.frame_id = self.map_frame
         msg.header.stamp = rospy.Time.now()
-        
-        try:
-            msg.pose.pose.position.x, msg.pose.pose.position.y, msg.pose.pose.position.z = p[0:3]
-            msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w = p[3:7]
-            
-            cov = [0.0] * 36
-            cov[0] = 0.25; cov[7] = 0.25; cov[14] = 0.01; cov[35] = 0.1
-            msg.pose.covariance = cov
-            
-            self.init_pub.publish(msg)
-        except IndexError:
-            rospy.logerr("[HDL_KILLER] 候选点格式错误！")
+        msg.pose.pose.position.x, msg.pose.pose.position.y, msg.pose.pose.position.z = p[0:3]
+        msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w = p[3:7]
+        cov = [0.0] * 36
+        cov[0] = 0.1; cov[7] = 0.1; cov[35] = 0.05
+        msg.pose.covariance = cov
+        self.init_pub.publish(msg)
 
     def status_callback(self, msg):
-        if self.alignment_locked:
-            return
+        now = rospy.Time.now()
+        if msg.inlier_fraction > self.best_inlier_seen:
+            self.best_inlier_seen = msg.inlier_fraction
 
-        # 判定收敛标准
         if msg.inlier_fraction > self.inlier_thresh and msg.matching_error < self.error_thresh:
-            rospy.logwarn("[HDL_KILLER] 判定收敛！Inlier: %.3f, Error: %.4f", 
-                          msg.inlier_fraction, msg.matching_error)
-            self.execute_lock_and_kill()
-
-    def execute_lock_and_kill(self):
-        try:
-            # 不要直接 sleep，给 TF 监听器一点缓冲时间
-            target_time = rospy.Time(0) 
-            found = False
-            
-            # 尝试在 5 秒内持续查找，而不是只查一次
-            for i in range(10): 
-                if self.listener.canTransform(self.map_frame, self.base_frame, target_time):
-                    (trans, rot) = self.listener.lookupTransform(self.map_frame, self.base_frame, target_time)
-                    self.locked_transform = (trans, rot)
-                    self.alignment_locked = True
-                    found = True
-                    break
-                rospy.sleep(0.1) # 短暂重试
-                
-            if found:
-                rospy.logerr("★★★ [HDL_KILLER] 成功锁定变换！ ★★★")
-                nodes_str = " ".join(self.nodes_to_kill)
-                os.system(f"rosnode kill {nodes_str}")
-            else:
-                rospy.logerr("[HDL_KILLER] 即使重试也无法获取 TF (map -> %s)", self.base_frame)
-
-        except Exception as e:
-            rospy.logerr("[HDL_KILLER] 锁定异常: %s", str(e))
-            
-    def publish_tf_loop(self, event):
-        if self.alignment_locked and self.locked_transform:
             try:
-                # 持续发布 map -> base_frame (camera_init)
-                self.br.sendTransform(
-                    self.locked_transform[0], 
-                    self.locked_transform[1], 
-                    rospy.Time.now(), 
-                    self.base_frame, 
-                    self.map_frame
-                )
-            except:
-                pass
+                # 关键：这里用 waitForTransform 增加一点鲁棒性
+                self.listener.waitForTransform(self.map_frame, self.base_frame, rospy.Time(0), rospy.Duration(0.1))
+                (trans, rot) = self.listener.lookupTransform(self.map_frame, self.base_frame, rospy.Time(0))
+                
+                self.best_trans = trans
+                self.best_rot = rot
+                self.last_fix_time = now
+                
+                if not self.is_localized:
+                    rospy.loginfo(">>>>> 定位锁定成功 <<<<<")
+                    self.is_localized = True
+            except: pass
+
+    def publish_tf_loop(self, event):
+        if self.best_trans and self.best_rot:
+            self.br.sendTransform(
+                self.best_trans, self.best_rot, 
+                rospy.Time.now(), 
+                self.base_frame, self.map_frame
+            )
 
 if __name__ == '__main__':
     try:
-        HdlKillerJetson()
+        HdlGovernorJetson()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass

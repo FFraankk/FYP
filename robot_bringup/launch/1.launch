@@ -1,7 +1,8 @@
 <launch>
-    <include file="$(find fast_livo)/launch/mapping_mid360.launch"/>
+    <!-- <include file="$(find fast_livo)/launch/mapping_mid360.launch"/> -->
 
     <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360_sync.launch"/>
+    <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360.launch"/>
 
     <!-- <include file="$(find hdl_localization)/launch/hdl_localization.launch"/> -->
 

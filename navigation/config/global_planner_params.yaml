@@ -1,7 +1,7 @@
 GlobalPlanner:                
   # from source code
   old_navfn_behavior: false
-  use_quadratic: false      
+  use_quadratic: true      
   use_dijkstra: true           
   use_grid_path: false  
   allow_unknown: false      
@@ -13,8 +13,8 @@ GlobalPlanner:
 
   # from cfg file
   lethal_cost: 253             
-  neutral_cost: 50           
-  cost_factor: 3          
+  neutral_cost: 66           
+  cost_factor: 0.55          
   publish_potential: false 
   orientation_mode: 1
   orientation_window_size: 1

@@ -70,14 +70,35 @@ class FloorManager:
             rospy.logwarn_throttle(10, f"Floor Manager: TF 监听异常: {e}")
 
     def switch_map(self, floor):
-        name = self.wp_4f['map_name'] if floor == 4 else self.wp_3f['map_name']
-        path = os.path.join(self.package_path, 'maps', name)
-        rospy.loginfo("【切图】正在尝试加载: %s", name)
-        os.system("rosnode kill /map_server") 
-        rospy.sleep(0.5)
-        os.system(f"rosrun map_server map_server {path} __name:=map_server &")
-        rospy.sleep(2.0)
+            name = self.wp_4f['map_name'] if floor == 4 else self.wp_3f['map_name']
+            path = os.path.join(self.package_path, 'maps', name)
+            
+            rospy.loginfo("【联动】检测到楼层变化，正在平滑切换 2D 导航图...")
+            
+            # 1. 先暂停当前导航目标，防止 move_base 在没图的时候报错
+            self.move_base.cancel_all_goals()
+            
+            # 2. 清理一下 costmap，避免残留上一层的障碍物
+            if self.clear_srv:
+                try: self.clear_srv()
+                except: pass
+                
+            # 3. 切换 2D 地图（不影响 HDL，因为 3D Map 没动）
+            os.system("rosnode kill /map_server") 
+            rospy.sleep(0.5)
+            os.system(f"rosrun map_server map_server {path} __name:=map_server &")
+            
+            # 4. 给 move_base 一点时间重新加载静态层
+            rospy.sleep(1.5) 
+            
+            # 5. 再次清理代价地图，确保新图生效
+            if self.clear_srv:
+                try: self.clear_srv()
+                except: pass
+                
+            rospy.loginfo("【联动】2D 导航环境重载完成。")
 
+            
     def get_dist(self, target):
         if self.curr_pos is None: return 1000.0
         return math.sqrt((self.curr_pos[0]-target[0])**2 + (self.curr_pos[1]-target[1])**2)
@@ -130,7 +151,7 @@ if __name__ == '__main__':
     try:
         mgr = FloorManager()
         rospy.sleep(2.0)
-        target_f = rospy.get_param('~initial_target_floor', 3)
+        target_f = rospy.get_param('~initial_target_floor', 4)
         target_k = rospy.get_param('~initial_target_key', 'office_goal')
         mgr.run_mission(target_f, target_k)
     except rospy.ROSInterruptException:

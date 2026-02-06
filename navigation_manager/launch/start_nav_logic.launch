@@ -22,7 +22,7 @@
         <param name="map_frame" value="$(arg map_frame)"/>
         <param name="base_frame" value="$(arg base_frame)"/>
         <param name="odom_frame" value="$(arg odom_frame)"/>
-        <param name="initial_target_floor" value="3"/>
+        <param name="initial_target_floor" value="4"/>
         <param name="initial_target_key" value="office_goal"/>
     </node>
 </launch>

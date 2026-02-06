@@ -14,7 +14,7 @@ resolution: 0.1
 origin_x: 0
 origin_y: 0
 footprint: [[-0.3, -0.2], [-0.3, 0.2], [0.3, 0.2], [0.3, -0.2]]
-footprint_padding: 0.1
+footprint_padding: 0.02
 
 static_layer:
   map_topic: map
@@ -37,7 +37,7 @@ stvl_obstacle_layer:
   update_footprint_enabled: true
   track_unknown_space:   false   #default space is unknown
   decay_model:           0      #0=linear, 1=exponential, -1=persistent
-  voxel_decay:           0.3     #seconds if linear, e^n if exponential
+  voxel_decay:           1     #seconds if linear, e^n if exponential
   mapping_mode:          false  # default off, saves map not for navigation
   map_save_duration:     60     #default 60s, how often to autosave
 
@@ -69,7 +69,7 @@ sob_layer:
   enabled: true
   inflate_unknown: false
   inscribed_radius: 0.15
-  inflation_radius: 0.45
+  inflation_radius: 0.6
   cost_scaling_factor: 10
 
 
