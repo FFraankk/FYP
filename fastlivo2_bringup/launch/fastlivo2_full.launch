@@ -9,7 +9,7 @@
   <!-- 1. 启动 Realsense 相机         -->
   <!-- ============================= -->
   <group if="$(arg use_camera)">
-    <include file="$(find realsense2_camera)/launch/rs_camera.launch"/>
+    <include file="$(find realsense2_camera)/launch/rs_color.launch"/>
   </group>
 
   <!-- ============================= -->

@@ -10,10 +10,10 @@ def pcd_to_occupancy_grid():
     rospy.init_node('pcd_to_pgm_node')
     
     # --- 参数设置 ---
-    pcd_path = "/home/nvidia/catkin_ws/src/hdl_localization/data/all_raw_points.pcd" # 你的PCD路径
+    pcd_path = "/home/nvidia/catkin_ws/src/hdl_localization/data/LS_floor2.pcd" # 你的PCD路径
     map_res = 0.02      # 分辨率 2cm
-    z_min = 4.4         # 截取高度下限（相对于该楼层地面）
-    z_max = 5.4         # 截取高度上限
+    z_min = 0.2         # 截取高度下限（相对于该楼层地面）
+    z_max = 1.5         # 截取高度上限
     # ----------------
     
     # 1. 读取PCD

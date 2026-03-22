@@ -30,7 +30,7 @@ TebLocalPlannerROS:
   prevent_look_ahead_poses_near_goal: 0
 
   # Robot
-  max_vel_x: 1.0
+  max_vel_x: 0.3
   max_vel_x_backwards: 0.2
   max_vel_y: 0.1
   max_vel_trans: 1.0

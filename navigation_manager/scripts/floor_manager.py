@@ -11,6 +11,7 @@ import tf
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from std_srvs.srv import Empty
 from actionlib_msgs.msg import GoalStatus
+from std_srvs.srv import SetBool
 
 class FloorManager:
     def __init__(self):
@@ -45,6 +46,13 @@ class FloorManager:
         # 启动位姿监听定时器 (10Hz)
         rospy.Timer(rospy.Duration(0.1), self.update_pose_from_tf)
         rospy.loginfo("Floor Manager: 业务节点就绪（TF监听模式）。")
+
+        rospy.loginfo("Floor Manager: 正在连接爬楼梯服务...")
+        try:
+            rospy.wait_for_service('/execute_stair_climb', timeout=5.0)
+            self.climb_srv = rospy.ServiceProxy('/execute_stair_climb', SetBool)
+        except rospy.ROSException:
+            rospy.logwarn("Floor Manager: 未检测到爬楼梯服务，请确保 stair_climber 节点已启动！")
 
     def load_config(self):
         config_path = os.path.join(self.package_path, 'config', 'waypoints.yaml')
@@ -125,27 +133,70 @@ class FloorManager:
         return self.move_base.get_state()
 
     def run_mission(self, target_floor, target_key):
-        rospy.loginfo(f"Floor Manager: 开始执行任务 -> 楼层: {target_floor}, 目标: {target_key}")
-        while self.curr_floor is None and not rospy.is_shutdown():
-            rospy.loginfo_throttle(5, "Floor Manager: 等待初始定位信息...")
-            rospy.sleep(1.0)
-
-        target_cfg = self.wp_4f if target_floor == 4 else self.wp_3f
-        if self.curr_floor != target_floor:
-            rospy.loginfo(f"Floor Manager: 当前在 {self.curr_floor} 层，目标在 {target_floor} 层，准备前往转换点...")
-            cur_stairs = self.wp_4f['stairs_point'] if self.curr_floor == 4 else self.wp_3f['stairs_point']
-            if self.send_goal(cur_stairs) == GoalStatus.SUCCEEDED:
-                rospy.loginfo("已到楼梯口，等待换层...")
-                self.wait_arrival(target_floor)
-                self.switch_map(target_floor)
-                if self.clear_srv:
-                    try: self.clear_srv()
-                    except: pass
+            rospy.loginfo(f"Floor Manager: 开始执行任务 -> 楼层: {target_floor}, 目标: {target_key}")
+            
+            # 0. 等待初始定位
+            while self.curr_floor is None and not rospy.is_shutdown():
+                rospy.loginfo_throttle(5, "Floor Manager: 等待初始定位信息...")
                 rospy.sleep(1.0)
+
+            target_cfg = self.wp_4f if target_floor == 4 else self.wp_3f
+            
+            if self.curr_floor != target_floor:
+                rospy.loginfo(f"Floor Manager: 当前在 {self.curr_floor} 层，目标在 {target_floor} 层，准备前往转换点...")
+                cur_stairs = self.wp_4f['stairs_point'] if self.curr_floor == 4 else self.wp_3f['stairs_point']
+                
+                # 1. 导航到当前楼层的楼梯口
+                if self.send_goal(cur_stairs) == GoalStatus.SUCCEEDED:
+                    rospy.loginfo("已到楼梯口，等待换层...")
+                    
+                    # 必须先取消 move_base 的目标，剥夺它的底盘控制权
+                    self.move_base.cancel_all_goals()
+                    rospy.sleep(0.5) # 给底层一点反应时间
+                    
+                    try:
+                        is_going_up = (target_floor > self.curr_floor) # 判断上楼还是下楼
+                        action_str = "上楼" if is_going_up else "下楼"
+                        rospy.loginfo(f"【联动】呼叫底层控制，执行 {action_str} 动作...")
+                        
+                        # 阻塞调用爬楼梯服务
+                        if hasattr(self, 'climb_srv'):
+                            resp = self.climb_srv(is_going_up)
+                            
+                            if resp.success:
+                                rospy.loginfo(f"【联动】{action_str}动作已确认完成，狗已平稳站上目标楼层！")
+                            else:
+                                rospy.logerr(f"【联动】{action_str}失败或被中断！")
+                        else:
+                            rospy.logerr("【错误】爬楼服务未初始化，请检查 init 中是否连接了 /execute_stair_climb ！")
+                            
+                    except Exception as e:
+                        rospy.logerr(f"调用爬楼服务发生异常: {e}")
+                    # ===============================================
+
+                    # 2. 爬楼完成后，执行 2D 导航图的平滑切换
+                    # 此时不需要调用原本的 self.wait_arrival() 了，因为服务返回 success 就代表到了
+                    self.switch_map(target_floor)
+                    
+                    # 3. 清空新图的代价地图，防止残留虚假障碍物
+                    if self.clear_srv:
+                        try: 
+                            self.clear_srv()
+                        except: 
+                            pass
+                    rospy.sleep(1.0)
+                    
+                    # 4. 继续导航去最终目标点
+                    rospy.loginfo(f"Floor Manager: 换层流程结束，前往最终目标: {target_key}")
+                    self.send_goal(target_cfg[target_key])
+                    
+                else:
+                    rospy.logerr("Floor Manager: 无法到达当前楼层的楼梯口，跨楼层任务中止。")
+                    
+            else:
+                # 目标层就在当前层
+                rospy.loginfo(f"Floor Manager: 目标层即为当前层，直接前往目标点。")
                 self.send_goal(target_cfg[target_key])
-        else:
-            rospy.loginfo(f"Floor Manager: 目标层即为当前层，直接前往目标点。")
-            self.send_goal(target_cfg[target_key])
 
 if __name__ == '__main__':
     try:
