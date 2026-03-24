@@ -30,7 +30,7 @@ TebLocalPlannerROS:
   prevent_look_ahead_poses_near_goal: 0
 
   # Robot
-  max_vel_x: 0.3
+  max_vel_x: 0.4
   max_vel_x_backwards: 0.2
   max_vel_y: 0.1
   max_vel_trans: 1.0
@@ -54,7 +54,7 @@ TebLocalPlannerROS:
   complete_global_plan: false
 
   # Obstacles
-  min_obstacle_dist: 0.15
+  min_obstacle_dist: 0.45
   inflation_dist: 0.45
   dynamic_obstacle_inflation_dist: 0.6
   include_dynamic_obstacles: true
@@ -95,10 +95,10 @@ TebLocalPlannerROS:
   weight_kinematics_forward_drive: 50 #default 1
   weight_kinematics_turning_radius: 0 #default 1
   weight_optimaltime: 1
-  weight_shortest_path: 9  #default 0
-  # weight_obstacle: 50
-  # weight_inflation: 0.1
-  # weight_dynamic_obstacle: 50
+  weight_shortest_path: 1  #default 0
+  weight_obstacle: 50
+  weight_inflation: 0.2
+  weight_dynamic_obstacle: 50
   # weight_dynamic_obstacle_inflation: 0.1
   # weight_velocity_obstacle_ratio: 0
   weight_viapoint: 1        #default 1

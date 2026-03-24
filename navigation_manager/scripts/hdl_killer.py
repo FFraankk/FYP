@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import rospy
-import tf
 import os
 import yaml
+import rospy
 import rospkg
-import numpy as np
 from hdl_localization.msg import ScanMatchingStatus
 from geometry_msgs.msg import PoseWithCovarianceStamped
-from std_srvs.srv import Empty
+from std_srvs.srv import Empty, SetBool, SetBoolResponse
 
 class HdlGovernorJetson:
     def __init__(self):
@@ -17,104 +15,93 @@ class HdlGovernorJetson:
 
         # --- 1. 参数配置 ---
         self.map_frame = rospy.get_param('~map_frame', 'map')
-        self.base_frame = rospy.get_param('~base_frame', 'camera_init')
-        self.odom_frame = rospy.get_param('~odom_frame', 'aft_mapped') 
-        
         self.inlier_thresh = rospy.get_param('~inlier_fraction_thresh', 0.95)
         self.error_thresh = rospy.get_param('~matching_error_thresh', 0.04)
-        
-        self.tf_rate = rospy.get_param('~tf_pub_rate', 30.0)
-        self.logic_rate = 3.0   
-        self.recalib_duration = rospy.Duration(10.0) 
+        self.logic_rate = 3.0  
 
         # --- 2. 状态变量 ---
         self.current_idx = 0
         self.wait_count = 0     
         self.best_inlier_seen = 0.0 
-        self.last_fix_time = rospy.Time(0)
-        self.last_recalib_trigger = rospy.Time.now()
-        
-        self.best_trans = None
-        self.best_rot = None
         self.is_localized = False 
+        self.is_paused = False 
+        self.lost_counter = 0
+        self.max_lost_frames = 120
 
-        # --- 3. 初始化 ---
-        self.load_waypoints()
-        self.listener = tf.TransformListener()
-        self.br = tf.TransformBroadcaster()
-        self.init_pub = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=1)
+        # --- 3. 核心初始化 ---
+        self.candidates = self._load_waypoints()
         
-        try:
-            rospy.loginfo("[Governor] 等待 /relocalize 服务...")
-            rospy.wait_for_service('/relocalize', timeout=2.0)
-            self.reloc_srv = rospy.ServiceProxy('/relocalize', Empty)
-        except:
-            self.reloc_srv = None
-            rospy.logwarn("[Governor] 未发现重定位服务")
+        # 发布与服务
+        self.init_pub = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=1)
+        self.pause_srv = rospy.Service('/set_hdl_pause', SetBool, self.handle_pause)
+        
+        # 动态绑定重定位服务
+        self.reloc_srv = self._init_reloc_service()
 
+        # 订阅状态
         self.status_sub = rospy.Subscriber('/status', ScanMatchingStatus, self.status_callback, queue_size=10)
 
-        # 定时器
-        rospy.Timer(rospy.Duration(1.0 / self.tf_rate), self.publish_tf_loop)
-        rospy.Timer(rospy.Duration(self.logic_rate), self.main_logic_loop)
+        # 定时器触发逻辑
+        rospy.Timer(rospy.Duration(1.0 / self.logic_rate), self.main_logic_loop)
+        rospy.loginfo("[Governor] 初始化完成：容错机制已就绪")
 
-        rospy.loginfo("[Governor] 系统就绪：候选点模式 -> 锁定追踪模式")
-
-    def load_waypoints(self):
+    def _load_waypoints(self):
+        """内部方法：加载路径点"""
         try:
             rp = rospkg.RosPack()
-            pkg_path = rp.get_path('navigation_manager')
-            yaml_path = os.path.join(pkg_path, 'config', 'waypoints.yaml')
+            yaml_path = os.path.join(rp.get_path('navigation_manager'), 'config', 'waypoints.yaml')
             with open(yaml_path, 'r') as f:
                 config = yaml.safe_load(f)
-                self.candidates = config.get('start_candidates', [])
-            rospy.loginfo(f"[Governor] 加载了 {len(self.candidates)} 个点")
-        except:
-            self.candidates = []
-            rospy.logerr("[Governor] 无法加载候选点文件")
+                nodes = config.get('start_candidates', [])
+                rospy.loginfo(f"[Governor] 成功加载 {len(nodes)} 个候选点")
+                return nodes
+        except Exception as e:
+            rospy.logerr(f"[Governor] 候选点加载失败: {e}")
+            return []
+
+    def _init_reloc_service(self):
+        """安全初始化重定位服务"""
+        try:
+            rospy.loginfo("[Governor] 正在寻找 /relocalize 服务...")
+            rospy.wait_for_service('/relocalize', timeout=2.0)
+            return rospy.ServiceProxy('/relocalize', Empty)
+        except rospy.ROSException:
+            rospy.logwarn("[Governor] 未发现重定位服务，全局搜索功能受限")
+            return None
+
+    def handle_pause(self, req):
+        self.is_paused = req.data
+        msg = "暂停" if self.is_paused else "恢复"
+        if not self.is_paused:
+            self.wait_count = 0
+            self.lost_counter = 0
+        rospy.loginfo(f"[Governor] 指令切换: {msg}")
+        return SetBoolResponse(success=True, message=f"State: {msg}")
 
     def main_logic_loop(self, event):
-        now = rospy.Time.now()
+        if self.is_paused or self.is_localized:
+            return
 
-        if not self.is_localized:
-            if not self.candidates:
-                self.call_relocalize()
-                return
+        if not self.candidates:
+            self.call_relocalize()
+            return
 
-            if self.wait_count < 3:
-                p = self.candidates[self.current_idx]
-                if self.wait_count == 0:
-                    rospy.loginfo(f"--- 尝试候选点 {self.current_idx} ---")
-                    self.publish_initial_pose(p)
-                self.wait_count += 1
-            else:
-                if self.current_idx == len(self.candidates) - 1:
-                    rospy.logwarn("[保底] 全局重定位触发...")
-                    self.call_relocalize()
-                    self.wait_count = -2 
-                else:
-                    self.wait_count = 0
-                self.current_idx = (self.current_idx + 1) % len(self.candidates)
-                self.best_inlier_seen = 0.0
+        # 轮询逻辑
+        if self.wait_count < 3:
+            if self.wait_count == 0:
+                rospy.loginfo(f"[Governor] 尝试候选点 [{self.current_idx}]")
+                self.publish_initial_pose(self.candidates[self.current_idx])
+            self.wait_count += 1
         else:
-            # 追踪模式：定期校准
-            if (now - self.last_recalib_trigger) > self.recalib_duration:
-                self.trigger_calibration_pose()
-                self.last_recalib_trigger = now
-
-    def trigger_calibration_pose(self):
-        try:
-            # 获取最新 map -> aft_mapped 投喂给 HDL
-            if self.listener.canTransform(self.map_frame, self.odom_frame, rospy.Time(0)):
-                (trans, rot) = self.listener.lookupTransform(self.map_frame, self.odom_frame, rospy.Time(0))
-                self.publish_initial_pose([trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3]])
-                rospy.loginfo("[校准] 已同步当前位姿")
-        except: pass
-
-    def call_relocalize(self):
-        if self.reloc_srv:
-            try: self.reloc_srv()
-            except: pass
+            # 检查是否完成一轮
+            if self.current_idx >= len(self.candidates) - 1:
+                rospy.logwarn("[Governor] 所有点尝试完毕，执行全局重定位")
+                self.call_relocalize()
+                self.wait_count = -2 # 给全局搜索留点宽限期
+            else:
+                self.wait_count = 0
+            
+            self.current_idx = (self.current_idx + 1) % len(self.candidates)
 
     def publish_initial_pose(self, p):
         msg = PoseWithCovarianceStamped()
@@ -122,38 +109,39 @@ class HdlGovernorJetson:
         msg.header.stamp = rospy.Time.now()
         msg.pose.pose.position.x, msg.pose.pose.position.y, msg.pose.pose.position.z = p[0:3]
         msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w = p[3:7]
+        
+        # 设定协方差：x, y, yaw
         cov = [0.0] * 36
-        cov[0] = 0.1; cov[7] = 0.1; cov[35] = 0.05
+        cov[0], cov[7], cov[35] = 0.1, 0.1, 0.05
         msg.pose.covariance = cov
         self.init_pub.publish(msg)
 
-    def status_callback(self, msg):
-        now = rospy.Time.now()
-        if msg.inlier_fraction > self.best_inlier_seen:
-            self.best_inlier_seen = msg.inlier_fraction
-
-        if msg.inlier_fraction > self.inlier_thresh and msg.matching_error < self.error_thresh:
+    def call_relocalize(self):
+        if self.reloc_srv:
             try:
-                # 关键：这里用 waitForTransform 增加一点鲁棒性
-                self.listener.waitForTransform(self.map_frame, self.base_frame, rospy.Time(0), rospy.Duration(0.1))
-                (trans, rot) = self.listener.lookupTransform(self.map_frame, self.base_frame, rospy.Time(0))
-                
-                self.best_trans = trans
-                self.best_rot = rot
-                self.last_fix_time = now
-                
-                if not self.is_localized:
-                    rospy.loginfo(">>>>> 定位锁定成功 <<<<<")
-                    self.is_localized = True
-            except: pass
+                self.reloc_srv()
+            except rospy.ServiceException:
+                pass
 
-    def publish_tf_loop(self, event):
-        if self.best_trans and self.best_rot:
-            self.br.sendTransform(
-                self.best_trans, self.best_rot, 
-                rospy.Time.now(), 
-                self.base_frame, self.map_frame
-            )
+    def status_callback(self, msg):
+        if self.is_paused:
+            return
+
+        is_healthy = (msg.inlier_fraction > self.inlier_thresh and 
+                      msg.matching_error < self.error_thresh)
+
+        if is_healthy:
+            self.lost_counter = 0
+            if not self.is_localized:
+                rospy.loginfo(">>>>> 定位锁定：切换至巡航模式 <<<<<")
+                self.is_localized = True
+        else:
+            if self.is_localized:
+                self.lost_counter += 1
+                if self.lost_counter > self.max_lost_frames:
+                    rospy.logerr("!!!!! 严重失配：判定为绑架，重进唤醒模式 !!!!!")
+                    self.is_localized = False
+                    self.lost_counter = 0
 
 if __name__ == '__main__':
     try:
