@@ -9,16 +9,16 @@ always_send_full_costmap: false
 # from cfg file
 transform_tolerance: 1.0
 update_frequency: 10
-publish_frequency: 5
-resolution: 0.1
+publish_frequency: 10
+resolution: 0.05
 origin_x: 0
 origin_y: 0
-footprint: [[-0.3, -0.2], [-0.3, 0.2], [0.3, 0.2], [0.3, -0.2]]
+footprint: [[-0.4, -0.15], [-0.4, 0.15], [0.4, 0.15], [0.4, -0.15]]
 footprint_padding: 0.02
 
 static_layer:
   map_topic: map
-  first_map_only: true
+  first_map_only: false
   subscribe_to_updates: false
   track_unknown_space: false
   use_maximum: true
@@ -37,23 +37,23 @@ stvl_obstacle_layer:
   update_footprint_enabled: true
   track_unknown_space:   false   #default space is unknown
   decay_model:           0      #0=linear, 1=exponential, -1=persistent
-  voxel_decay:           1     #seconds if linear, e^n if exponential
+  voxel_decay:           2     #seconds if linear, e^n if exponential
   mapping_mode:          false  # default off, saves map not for navigation
   map_save_duration:     60     #default 60s, how often to autosave
 
   livox_source:
     topic: /cloud_registered
     sensor_frame: aft_mapped
-    observation_persistence: 0.0  #default 0, use all measurements taken during now-value, 0=latest 
+    observation_persistence: 0.2  #default 0, use all measurements taken during now-value, 0=latest 
     expected_update_rate: 10.0     #default 0, if not updating at this rate at least, remove from buffer
     data_type: PointCloud2
-    min_obstacle_height: 0.15      #default 0, meters
+    min_obstacle_height: 0.6      #default 0, meters
     max_obstacle_height: 2.0      #defaule 3, meters
     inf_is_valid: false           #default false, for laser scans    
     marking: true
     clearing: true
-    min_z: 0.2
-    max_z: 3.0
+    min_z: 0.6
+    max_z: 2.0
     vertical_fov_angle: 0.56
     vertical_fov_padding: 0.0
     horizontal_fov_angle: 6.29
@@ -68,9 +68,9 @@ stvl_obstacle_layer:
 sob_layer:
   enabled: true
   inflate_unknown: false
-  inscribed_radius: 0.15
-  inflation_radius: 0.5
-  cost_scaling_factor: 5
+  inscribed_radius: 0.13
+  inflation_radius: 0.50
+  cost_scaling_factor: 6.0
 
 
 ###################################

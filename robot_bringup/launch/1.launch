@@ -1,12 +1,30 @@
 <launch>
-    <!-- <include file="$(find fast_livo)/launch/mapping_mid360.launch"/> -->
+    <node pkg="unitree" type="go2_ros_bridge.py" name="go2_ros_bridge" output="screen" />
 
-    <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360_sync.launch"/>
-    <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360.launch"/>
+    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
+        <arg name="time" value="10" />
+        <arg name="pkg" value="hdl_localization" />
+        <arg name="file" value="hdl_localization.launch" />
+        <arg name="node_name" value="timed_hdl" /> </include>
 
-    <!-- <include file="$(find hdl_localization)/launch/hdl_localization.launch"/> -->
+    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
+        <arg name="time" value="6" />
+        <arg name="pkg" value="navigation" />
+        <arg name="file" value="navigation.launch" />
+        <arg name="node_name" value="timed_nav" />
+    </include>
 
-    <!-- <node pkg="rviz" type="rviz" name="rviz" args="-d $(find hdl_global_localization)/config/test.rviz" /> -->
+    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
+        <arg name="time" value="6" />
+        <arg name="pkg" value="navigation_manager" />
+        <arg name="file" value="start_nav_logic.launch" />
+        <arg name="node_name" value="timed_nav_manager" />
+    </include>
 
-    <!-- <include file="$(find navigation)/launch/navigation.launch"/> -->
+    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
+        <arg name="time" value="8" />
+        <arg name="pkg" value="fastlivo2_bringup" />
+        <arg name="file" value="fastlivo2_full.launch" />
+        <arg name="node_name" value="timed_fast_lio" />
+    </include>
 </launch>

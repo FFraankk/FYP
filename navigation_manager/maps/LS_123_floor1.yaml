@@ -1,0 +1,7 @@
+image: LS_123_floor1.pgm
+resolution: 0.020000
+origin: [-23.833025, -18.813692, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196
+

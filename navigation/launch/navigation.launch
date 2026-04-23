@@ -6,7 +6,7 @@
 
   <!-- <node pkg="tf" type="static_transform_publisher" name="body_to_base_link" args="0 0 0 0 0 0 body base_link 100" /> -->
 
-  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+  <node pkg="move_base" type="move_base" respawn="true" name="move_base" output="screen">
     <!-- global costmap -->
     <rosparam file="$(find navigation)/config/common_costmap_params.yaml" command="load" ns="global_costmap" /> 
     <rosparam file="$(find navigation)/config/global_costmap_params.yaml" command="load" ns="global_costmap" />     

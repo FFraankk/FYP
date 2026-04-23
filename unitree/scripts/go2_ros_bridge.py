@@ -17,12 +17,22 @@ from unitree_sdk2py.idl.default import std_msgs_msg_dds__String_
 class Go2SafeBridge:
     def __init__(self, interface):
         # 0. 必须最先初始化 ROS 节点！
-        rospy.init_node('go2_ros_bridge_safe', anonymous=True)
+        rospy.init_node('go2_ros_bridge', anonymous=True)
         
         # --- 参数配置 (可根据环境调整) ---
-        self.MAX_LINEAR_X = 0.8   # 最大前进速度 (m/s)
-        self.MAX_LINEAR_Y = 0.8   # 最大侧移速度 (m/s)
-        self.MAX_ANGULAR_Z = 1.0  # 最大旋转速度 (rad/s)
+# --- 参数配置 (可根据环境调整) ---
+        self.MAX_LINEAR_X = 2.0   # 最大前进速度 (m/s)
+        self.MAX_LINEAR_Y = 1.0   # 最大侧移速度 (m/s)
+        self.MAX_ANGULAR_Z = 5.0  # 最大旋转速度 (rad/s)
+        
+        # 【新增】最小速度与死区配置
+        self.MIN_LINEAR_X = 0.05   # 最小前进速度 (m/s)
+        self.MIN_LINEAR_Y = 0.2   # 最小侧移速度 (m/s)
+        self.MIN_ANGULAR_Z = 0.05  # 最小旋转速度 (rad/s)
+        self.LINEAR_DEADBAND = 0.005   
+        self.YAW_DEADBAND = 0.005
+
+        
         self.TIMEOUT_SEC = 0.5    # 超过 0.5s 没收到指令就停机
         
         # 1. 初始化 Unitree SDK
@@ -83,14 +93,30 @@ class Go2SafeBridge:
         self.lidar_pub.Write(cmd_msg)
         rospy.loginfo(f"LiDAR switch command sent: {status}")
 
+    def apply_velocity_limits(self, v, min_v, max_v, deadband):
+        """【新增】处理死区、最小速度和最大速度的限幅逻辑"""
+        abs_v = abs(v)
+        
+        # 1. 死区判断：如果速度极小，直接返回 0
+        if abs_v < deadband:
+            return 0.0
+            
+        # 2. 提取方向标志 (正数为1，负数为-1)
+        sign = 1.0 if v > 0 else -1.0
+        
+        # 3. 限制在最小值和最大值之间
+        clamped_v = max(min_v, min(abs_v, max_v))
+        
+        return sign * clamped_v
+
     def cmd_vel_callback(self, msg):
         # 记录收到指令的时间戳
         self.last_cmd_time = rospy.Time.now()
         
-        # --- 速度限幅保护 ---
-        vx = max(min(msg.linear.x, self.MAX_LINEAR_X), -self.MAX_LINEAR_X)
-        vy = max(min(msg.linear.y, self.MAX_LINEAR_Y), -self.MAX_LINEAR_Y)
-        vyaw = max(min(msg.angular.z, self.MAX_ANGULAR_Z), -self.MAX_ANGULAR_Z)
+        # 【修改】分别传入对应的死区参数
+        vx = self.apply_velocity_limits(msg.linear.x, self.MIN_LINEAR_X, self.MAX_LINEAR_X, self.LINEAR_DEADBAND)
+        vy = self.apply_velocity_limits(msg.linear.y, self.MIN_LINEAR_Y, self.MAX_LINEAR_Y, self.LINEAR_DEADBAND)
+        vyaw = self.apply_velocity_limits(msg.angular.z, self.MIN_ANGULAR_Z, self.MAX_ANGULAR_Z, self.YAW_DEADBAND)
         
         try:
             self.sport_client.Move(vx, vy, vyaw)
